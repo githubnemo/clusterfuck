@@ -51,12 +51,12 @@ func (b *BaseCountable) Add() {
 
 type PreambleNode struct{
 	BaseNode
-	UseIO bool
+	UseIO		bool
+	UseFmt		bool
 }
 
 func (n *PreambleNode) Code() string {
 	headers := `
-import "fmt"
 import "os"
 `
 
@@ -73,13 +73,21 @@ func main() {
 	functions := make([]func(), REGISTERS)
 	currentIndex := 0
 
+	// Suppress unused warnings
+	registers[0] = 0
+	functions[0] = nil
+
 	// Program begin
 `
 
 	start += headers
 
 	if n.UseIO {
-		start += "import io\n"
+		start += "import \"io\"\n"
+	}
+
+	if n.UseFmt {
+		start += "import \"fmt\"\n"
 	}
 
 	return start + body
@@ -277,7 +285,7 @@ func (t *TokenList) Append(n Node) {
 func Tokenize(s string) *TokenList {
 	t := &TokenList{}
 
-	t.Append(&PreambleNode{ BaseNode{0,0}, false })
+	t.Append(&PreambleNode{ BaseNode{0,0}, false, false })
 
 	for i, c := range s {
 		end := i + len(string(c))
@@ -400,6 +408,10 @@ func ParseTokens(t *TokenList, nesting int) (*ParseList, int, error) {
 
 			case *InputNode:
 				p.Nodes[0].(*PreambleNode).UseIO = true
+				p.Append(unknownNode)
+
+			case *OutputNode:
+				p.Nodes[0].(*PreambleNode).UseFmt = true
 				p.Append(unknownNode)
 
 			case Encodable:
