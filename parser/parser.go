@@ -59,6 +59,7 @@ package main
 
 import "fmt"
 import "os"
+import "io"
 
 const REGISTERS = 100
 
@@ -150,11 +151,13 @@ func (n *InputNode) Code() string {
 		_, err := fmt.Scanf("%c", &registers[currentIndex])
 
 		if err != nil {
-			fmt.Println("Keyscan Error:", err)
-			return
+			if err == io.EOF {
+				registers[currentIndex] = 0
+			} else {
+				fmt.Println("Keyscan Error:", err)
+				return
+			}
 		}
-
-		fmt.Println(registers[currentIndex])
 	}
 `
 }
@@ -167,8 +170,7 @@ type LoopNode struct{
 
 func (n *LoopNode) Code() string {
 	header := `{
-		loopIndex := currentIndex
-		for ; registers[loopIndex] > 0; {
+		for ; registers[currentIndex] > 0; {
 `
 	footer := `
 		}
@@ -216,7 +218,7 @@ func Tokenize(s string) *TokenList {
 	t.Append(&PreambleNode{ BaseNode{0,0} })
 
 	for i, c := range s {
-		end := len(string(c))
+		end := i + len(string(c))
 
 		switch c {
 			case '+':
@@ -253,35 +255,26 @@ func (p *ParseList) Append(n Node) {
 }
 
 
-func parseLoop(t []Node) (*LoopNode, int, error) {
-	loopNode := &LoopNode{}
-
-	for i := 0; i < len(t); i++ {
-		node := t[i]
-
-		if _, ok := node.(*LoopOpenNode); ok {
-			lnode, skip, err := parseLoop(t[i+1:])
-
-			if err != nil {
-				return nil, 0, err
-			}
-
-			node = lnode
-			i += skip
-		}
-
-		if _, ok := node.(*LoopCloseNode); ok {
-			return loopNode, i, nil
-		}
-
-		loopNode.Nodes = append(loopNode.Nodes, node)
-	}
-
-	return nil, 0, fmt.Errorf("Syntax error: No Loop Close found. Expected at pos. %d\n", t[len(t)-1].End())
+type ParseError struct {
+	FaultyNode	Node
+	Message		string
 }
 
 
-func ParseTokens(t *TokenList) (*ParseList, error) {
+func (p *ParseError) Error() string {
+	return p.Message
+}
+
+
+func parseError(n Node, msg string) *ParseError {
+	return &ParseError{
+		n,
+		fmt.Sprintf("Error: %s, Position: %d - %d\n", msg, n.Pos(), n.End()),
+	}
+}
+
+
+func ParseTokens(t *TokenList, nesting int) (*ParseList, int, error) {
 	p := &ParseList{}
 
 	for i := 0; i < len(t.Nodes); i++ {
@@ -289,29 +282,45 @@ func ParseTokens(t *TokenList) (*ParseList, error) {
 
 		switch unknownNode.(type) {
 			case *LoopOpenNode:
-				loopNode, skip, err := parseLoop(t.Nodes[i+1:])
+				p2, skip, err := ParseTokens(&TokenList{t.Nodes[i+1:], nil}, nesting+1)
 
 				if err != nil {
-					return nil, err
+					return nil, 0, err
 				}
 
-				p.Append(loopNode)
+				p.Append(&LoopNode{
+					BaseNode{
+						p2.Nodes[0].Pos(),
+						p2.Nodes[len(p2.Nodes)-1].End(),
+					},
+					p2.Nodes,
+				})
 
 				i += skip
+
+			case *LoopCloseNode:
+				if nesting == 0 {
+					return nil, 0, parseError(unknownNode, "Loop closed while not open")
+				}
+
+				// +1 for the skipped LoopCloseNode
+				return p, i+1, nil
 
 			case Encodable:
 				p.Append(unknownNode)
 		}
 	}
 
-	return p, nil
+	return p, 0, nil
 }
 
 
 func Parse(s string) (*ParseList, error) {
 	t := Tokenize(s)
 
-	return ParseTokens(t)
+	p, _, err := ParseTokens(t, 0)
+
+	return p, err
 }
 
 
