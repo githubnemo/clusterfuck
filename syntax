@@ -1,0 +1,12 @@
+
+functions [100]Function
+
+functions[currentIndex] = func() {
+	+++
+}
+
+if functions[currentIndex] != nil {
+	functions[currentIndex]()
+}
+
+{+++}>++[<!]
