@@ -6,6 +6,13 @@ import (
 )
 
 
+// FIXME Handle this in PreambleNode
+var (
+	g_UseIO = false
+	g_UseFmt = false
+)
+
+
 type Node interface{
 	Pos() int		// Position of first character of node
 	End() int		// Position of character after the node
@@ -51,8 +58,6 @@ func (b *BaseCountable) Add() {
 
 type PreambleNode struct{
 	BaseNode
-	UseIO		bool
-	UseFmt		bool
 }
 
 func (n *PreambleNode) Code() string {
@@ -82,11 +87,11 @@ func main() {
 
 	start += headers
 
-	if n.UseIO {
+	if g_UseIO {
 		start += "import \"io\"\n"
 	}
 
-	if n.UseFmt {
+	if g_UseFmt {
 		start += "import \"fmt\"\n"
 	}
 
@@ -285,7 +290,7 @@ func (t *TokenList) Append(n Node) {
 func Tokenize(s string) *TokenList {
 	t := &TokenList{}
 
-	t.Append(&PreambleNode{ BaseNode{0,0}, false, false })
+	t.Append(&PreambleNode{ BaseNode{0,0} })
 
 	for i, c := range s {
 		end := i + len(string(c))
@@ -407,11 +412,11 @@ func ParseTokens(t *TokenList, nesting int) (*ParseList, int, error) {
 				return p, i+1, nil
 
 			case *InputNode:
-				p.Nodes[0].(*PreambleNode).UseIO = true
+				g_UseIO = true
 				p.Append(unknownNode)
 
 			case *OutputNode:
-				p.Nodes[0].(*PreambleNode).UseFmt = true
+				g_UseFmt = true
 				p.Append(unknownNode)
 
 			case Encodable:
