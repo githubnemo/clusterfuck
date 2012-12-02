@@ -2,23 +2,21 @@
 
 ## Functions
 
-- Define some function on register 2:
+### Define some function on register 2:
 
-	>>{++++++++++}
+    >>{++++++++++}
 
-- Call a function in register 2:
+### Call a function in register 2:
 
-	>>!
+    >>!
 
-- Recurse 3 times:
+### Recurse 3 times:
 
     +++{-[!]}!
 
-- Endless recursion:
+### Endless recursion:
 
-	{!}!
-
-- Connect to peers for communication
+    {!}!
 
 ## Connect to peers
 
