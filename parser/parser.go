@@ -51,24 +51,38 @@ func (b *BaseCountable) Add() {
 
 type PreambleNode struct{
 	BaseNode
+	UseIO bool
 }
 
 func (n *PreambleNode) Code() string {
-	return `
-package main
-
+	headers := `
 import "fmt"
 import "os"
-import "io"
+`
+
+	start := `
+package main
+`
+
+	body := `
 
 const REGISTERS = 100
 
 func main() {
 	registers := make([]byte, REGISTERS)
+	functions := make([]func(), REGISTERS)
 	currentIndex := 0
 
 	// Program begin
 `
+
+	start += headers
+
+	if n.UseIO {
+		start += "import io\n"
+	}
+
+	return start + body
 }
 
 
@@ -196,6 +210,54 @@ type LoopCloseNode struct{
 }
 
 
+// Represent a function definition.
+type FunctionNode struct{
+	BaseNode
+	Nodes	[]Node
+}
+
+func (n *FunctionNode) Code() string {
+	header := `
+	functions[currentIndex] = func() {
+`
+	footer := `
+	}
+`
+	code := header
+
+	for _, node := range n.Nodes {
+		code += "\t\t\t" + node.(Encodable).Code()
+	}
+
+	return code + footer
+
+}
+
+
+type FuncOpenNode struct{
+	BaseNode
+}
+
+
+type FuncCloseNode struct{
+	BaseNode
+}
+
+
+// Execution of a function defined on a index
+type FuncExecNode struct {
+	BaseNode
+}
+
+func (n *FuncExecNode) Code() string {
+	return `
+	if functions[currentIndex] != nil {
+		functions[currentIndex]()
+	}
+`
+}
+
+
 type TokenList struct{
 	Nodes		[]Node
 	lastNode	Node
@@ -215,7 +277,7 @@ func (t *TokenList) Append(n Node) {
 func Tokenize(s string) *TokenList {
 	t := &TokenList{}
 
-	t.Append(&PreambleNode{ BaseNode{0,0} })
+	t.Append(&PreambleNode{ BaseNode{0,0}, false })
 
 	for i, c := range s {
 		end := i + len(string(c))
@@ -233,6 +295,12 @@ func Tokenize(s string) *TokenList {
 				t.Append(&LoopOpenNode{ BaseNode{i, end} })
 			case ']':
 				t.Append(&LoopCloseNode{ BaseNode{i, end} })
+			case '{':
+				t.Append(&FuncOpenNode{ BaseNode{i, end} })
+			case '}':
+				t.Append(&FuncCloseNode{ BaseNode{i, end} })
+			case '!':
+				t.Append(&FuncExecNode{ BaseNode{i, end} })
 			case '.':
 				t.Append(&OutputNode{ BaseNode{i, end} })
 			case ',':
@@ -305,6 +373,34 @@ func ParseTokens(t *TokenList, nesting int) (*ParseList, int, error) {
 
 				// +1 for the skipped LoopCloseNode
 				return p, i+1, nil
+
+			case *FuncOpenNode:
+				p2, skip, err := ParseTokens(&TokenList{t.Nodes[i+1:], nil}, nesting+1)
+
+				if err != nil {
+					return nil, 0, err
+				}
+
+				p.Append(&FunctionNode{
+					BaseNode{
+						p2.Nodes[0].Pos(),
+						p2.Nodes[len(p2.Nodes)-1].End(),
+					},
+					p2.Nodes,
+				})
+
+				i += skip
+
+			case *FuncCloseNode:
+				if nesting == 0 {
+					return nil, 0, parseError(unknownNode, "Func closed while not open")
+				}
+
+				return p, i+1, nil
+
+			case *InputNode:
+				p.Nodes[0].(*PreambleNode).UseIO = true
+				p.Append(unknownNode)
 
 			case Encodable:
 				p.Append(unknownNode)
